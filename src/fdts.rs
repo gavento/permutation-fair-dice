@@ -5,11 +5,9 @@ use std::{
     iter::Enumerate,
 };
 
-use crate::DiceTuple;
+use crate::{subset_word, DiceTuple, Word};
 use log::info;
 use smallvec::SmallVec;
-type Word = SmallVec<[u8; 64]>;
-// Consider: type Word = Vec<u8>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MappedFDTS<'a> {
@@ -101,13 +99,37 @@ impl FDTS {
                     .expect("not all indices are mapped to")
             })
             .collect();
+
         let mut f = FDTS::new_empty(&sizes);
 
-        let bin_indices = d1.map.iter().filter(|i| d2.map.contains(i));
+        let bin_indices: Vec<_> = d1
+            .map
+            .iter()
+            .cloned()
+            .filter(|i| d2.map.contains(i))
+            .collect();
         //info!("Combining {} and {} into {}, checking {}");
+
         let mut bins1 = HashMap::<Word, Vec<Word>>::new();
+        for w in d1.iterate_words() {
+            bins1
+                .entry(subset_word(&w, &bin_indices))
+                .or_default()
+                .push(w);
+        }
 
         let mut bins2 = HashMap::<Word, Vec<Word>>::new();
+        for w in d2.iterate_words() {
+            bins2
+                .entry(subset_word(&w, &bin_indices))
+                .or_default()
+                .push(w);
+        }
+
+        for bw in bins1.keys() {
+            if !bins2.contains_key(bw) {continue; }
+            /// TODO: Do the cross-over
+        }
 
         f
     }

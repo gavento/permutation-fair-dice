@@ -7,6 +7,11 @@ use smallvec::SmallVec;
 type Word = SmallVec<[u8; 64]>;
 // Consider: type Word = Vec<u8>;
 
+pub fn subset_word(w : &Word, subset: &[usize]) -> Word {
+    w.iter().cloned().filter(|&x|{subset.contains(&(x as usize))}).collect()
+}
+
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct DiceTuple {
     pub word: Word,
