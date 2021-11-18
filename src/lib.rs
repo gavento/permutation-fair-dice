@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use std::iter::Enumerate;
 
-mod fdts;
+pub mod fdts;
 
 use smallvec::SmallVec;
 type Word = SmallVec<[u8; 64]>;
