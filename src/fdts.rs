@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::Instant;
 
 use crate::{subset_word, DiceTuple, Word};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -157,28 +158,36 @@ impl FDTS {
             .iter()
             .map(|&bw| bins1[bw].len() * bins2[bw].len())
             .sum();
-        info!("Combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs", d1.fdts.dice.len(), d2.fdts.dice.len(), &bin_indices, common_keys.len(), total_pairs);
 
+        let mut key_w1_pairs = vec![];
+        for c in &common_keys {
+            for w1 in &bins1[*c] {
+                key_w1_pairs.push((c, w1));
+            }
+        }
+
+        info!("Combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs", d1.fdts.dice.len(), d2.fdts.dice.len(), &bin_indices, common_keys.len(), total_pairs);
         let bar = ProgressBar::new(total_pairs as u64);
         bar.set_style(
             ProgressStyle::default_bar()
-                .template("combining: {percent}%|{wide_bar}| {pos}/{len} pairs [{elapsed}<{eta}] {msg}")
+                .template(
+                    "combining: {percent}%|{wide_bar}| {pos}/{len} pairs [{elapsed}<{eta}] {msg}",
+                )
                 .progress_chars("##-"),
         );
         let candidates = Mutex::new(0usize);
         let res = Mutex::new(vec![]);
+        let t0 = Instant::now();
 
-        common_keys.par_iter().for_each(|&bw| {
+        key_w1_pairs.par_iter().for_each(|(&bw, w1)| {
             let mut local_c = 0;
             let mut local_res = Vec::new();
-            for w1 in &bins1[bw] {
-                for w2 in &bins2[bw] {
-                    for wi in f.interleave_words(w1, w2, &checking, &bin_indices) {
-                        let dice = DiceTuple::from_word(&f, &wi);
-                        local_c += 1;
-                        if f.is_dice_fair(&dice) {
-                            local_res.push(dice);
-                        }
+            for w2 in &bins2[bw] {
+                for wi in f.interleave_words(w1, w2, &checking, &bin_indices) {
+                    let dice = DiceTuple::from_word(&f, &wi);
+                    local_c += 1;
+                    if f.is_dice_fair(&dice) {
+                        local_res.push(dice);
                     }
                 }
             }
@@ -186,8 +195,13 @@ impl FDTS {
             let mut r = res.lock().unwrap();
             *c += local_c;
             r.extend_from_slice(&mut local_res);
-            bar.inc((bins1[bw].len() * bins2[bw].len()) as u64);
-            bar.set_message(format!("{} results, {} candidates", r.len(), *c));
+            bar.inc((bins2[bw].len()) as u64);
+            bar.set_message(format!(
+                "{} results, {} candidates, {:.2} cands/s",
+                r.len(),
+                *c,
+                (*c as f64) / t0.elapsed().as_secs_f64()
+            ));
         });
 
         bar.finish();
