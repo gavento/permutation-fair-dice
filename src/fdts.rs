@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -132,7 +133,13 @@ impl FDTS {
             .cloned()
             .filter(|i| d2.map.contains(i))
             .collect();
-        //info!("Combining {} and {} into {}, checking {}");
+        info!(
+            "Combining ({}) and ({}) into ({}), checking {:?}",
+            d1.sizes_string(),
+            d2.sizes_string(),
+            f.sizes_string(),
+            checking.iter().map(|c| { c.sizes_string() }).collect_vec()
+        );
 
         let mut bins1 = HashMap::<Word, Vec<Word>>::new();
         for w in d1.iterate_words() {
@@ -166,7 +173,7 @@ impl FDTS {
             }
         }
 
-        info!("Combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs", d1.fdts.dice.len(), d2.fdts.dice.len(), &bin_indices, common_keys.len(), total_pairs);
+        info!(" .. combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs", d1.fdts.dice.len(), d2.fdts.dice.len(), &bin_indices, common_keys.len(), total_pairs);
         let bar = ProgressBar::new(total_pairs as u64);
         bar.set_style(
             ProgressStyle::default_bar()
@@ -180,28 +187,32 @@ impl FDTS {
         let t0 = Instant::now();
 
         key_w1_pairs.par_iter().for_each(|(&bw, w1)| {
-            let mut local_c = 0;
-            let mut local_res = Vec::new();
             for w2 in &bins2[bw] {
+                let mut local_c = 0;
+                let mut local_res = Vec::new();
                 for wi in f.interleave_words(w1, w2, &checking, &bin_indices) {
                     let dice = DiceTuple::from_word(&f, &wi);
                     local_c += 1;
-                    if f.is_dice_fair(&dice) {
+                    if is_dice_word_fair(&wi, 14) {
                         local_res.push(dice);
                     }
+//                    if f.is_dice_fair(&dice) {
+//                        local_res.push(dice);
+//                    }
                 }
+                let mut c = candidates.lock().unwrap();
+                let mut r = res.lock().unwrap();
+                *c += local_c;
+                r.extend_from_slice(&mut local_res);
+                //bar.inc((bins2[bw].len()) as u64);
+                bar.inc(1);
+                bar.set_message(format!(
+                    "{} results, {} candidates, {:.2} cands/s",
+                    r.len(),
+                    *c,
+                    (*c as f64) / t0.elapsed().as_secs_f64()
+                ));
             }
-            let mut c = candidates.lock().unwrap();
-            let mut r = res.lock().unwrap();
-            *c += local_c;
-            r.extend_from_slice(&mut local_res);
-            bar.inc((bins2[bw].len()) as u64);
-            bar.set_message(format!(
-                "{} results, {} candidates, {:.2} cands/s",
-                r.len(),
-                *c,
-                (*c as f64) / t0.elapsed().as_secs_f64()
-            ));
         });
 
         bar.finish();
@@ -210,7 +221,7 @@ impl FDTS {
         }
 
         info!(
-            "Created FDTS {:?} with {} fair DiceTuples ({} prefixes)",
+            " .. created FDTS {:?} with {} fair DiceTuples ({} prefixes)",
             &f.sizes,
             f.dice.len(),
             f.prefixes.len(),
@@ -246,7 +257,6 @@ impl FDTS {
                 return;
             }
         }
-        // TODO: Use checking
         if w1.is_empty() && w2.is_empty() {
             res.push(out.clone());
             return;
@@ -357,6 +367,55 @@ impl FDTS {
         vals.iter().all(|&v| v == vals[0])
     }
 }
+
+thread_local! {
+    static SUBPERM_TABLES: RefCell<Vec<HashMap<Word, usize>>> = RefCell::new(vec![HashMap::new(); 16]);
+}
+
+// Counts occurences of the permutation (n-1, .., 0) in the given word
+fn rec_check_perm(n: u8, word: &[u8], cache_limit: usize) -> usize {
+    if n == 0 {
+        return 1;
+    }
+    if word.is_empty() {
+        return 0;
+    }
+
+    if word.len() < cache_limit {
+        let cached = SUBPERM_TABLES.with(|st| st.borrow()[n as usize].get(word).cloned());
+        if let Some(sum) = cached {
+            return sum;
+        }
+    }
+
+    let mut sum = 0;
+    for (i, &c) in word.iter().enumerate() {
+        if c == n - 1 {
+            sum += rec_check_perm(n - 1, &word[(i + 1)..], cache_limit);
+        }
+    }
+    if word.len() < cache_limit {
+        SUBPERM_TABLES.with(|st| st.borrow_mut()[n as usize].insert(word.into(), sum));
+    }
+    sum
+}
+
+pub fn is_dice_word_fair(word: &[u8], cache_limit: usize) -> bool {
+    let n = word.iter().max().unwrap() + 1;
+    //let n_perms = (0 .. n as usize).product();
+    let mut count = None;
+    let perms = (0..n).permutations(n as usize).collect_vec();
+    for p in perms {
+        let w2 = word.iter().map(|&x| p[x as usize]).collect_vec();
+        let c = rec_check_perm(n, &w2, cache_limit);
+        if count.is_none() {count = Some(c);}
+        if c != count.unwrap() {
+            return false;
+        }
+    }
+    true
+}
+
 
 mod test {
     #![allow(unused_imports)]
