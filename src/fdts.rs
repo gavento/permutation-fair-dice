@@ -1,16 +1,14 @@
-use std::cell::RefCell;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use crate::permutations::is_word_permutation_fair;
 use crate::{is_sorted, subset_word, DiceTuple, Word};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::info;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
-
-const CACHE_LIMIT: usize = 12;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MappedFDTS<'a> {
@@ -190,11 +188,9 @@ impl FDTS {
                 let mut local_c = 0;
                 let mut local_res = Vec::new();
                 for wi in f.interleave_words(w1, w2, &checking, &bin_indices, true) {
-                    let dice = DiceTuple::from_word(&f, &wi);
                     local_c += 1;
-                    debug_assert_eq!(f.is_dice_fair(&dice), is_dice_word_fair(&wi, CACHE_LIMIT));
-                    if is_dice_word_fair(&wi, CACHE_LIMIT) {
-                        local_res.push(dice);
+                    if is_word_permutation_fair(&wi, (0..f.n() as u8).collect::<Word>()) {
+                        local_res.push(DiceTuple::from_word(&f, &wi));
                     }
                 }
                 let mut c = candidates.lock().unwrap();
@@ -421,144 +417,6 @@ impl FDTS {
     }
 }
 
-impl FDTS {
-    fn _rec_is_dice_fair(&self, d: &DiceTuple, drawn: &mut Word, dice_no: usize, counters: &mut HashMap<Vec<bool>, usize>) {
-        if dice_no == self.n() {
-            let mut key = Vec::new();
-            for i1 in 0..self.n() - 1 {
-                for i2 in i1 + 1..self.n() {
-                    key.push(drawn[i1] < drawn[i2]);
-                }
-            }
-            *counters.entry(key).or_default() += 1;
-        } else {
-            let o = self.offsets[dice_no];
-            for &roll in &d.numbers[o..o + self.sizes[dice_no]] {
-                drawn.push(roll);
-                self._rec_is_dice_fair(d, drawn, dice_no + 1, counters);
-                drawn.pop();
-            }
-        }
-    }
-
-    pub fn is_dice_fair(&self, d: &DiceTuple) -> bool {
-        let perms = (1..=self.n()).product();
-        let mut counters = HashMap::default();
-        self._rec_is_dice_fair(d, &mut Word::new(), 0, &mut counters);
-        let vals: Vec<usize> = counters.into_values().collect();
-        if vals.len() != perms {
-            return false;
-        }
-        vals.iter().all(|&v| v == vals[0])
-    }
-}
-
-thread_local! {
-    static SUBPERM_TABLES: RefCell<Vec<HashMap<Word, usize>>> = RefCell::new(vec![HashMap::default(); 16]);
-}
-
-// Counts occurences of the permutation (n-1, .., 0) in the given word
-fn rec_check_perm(n: u8, word: &[u8], cache_limit: usize) -> usize {
-    if n == 0 {
-        return 1;
-    }
-    if word.is_empty() {
-        return 0;
-    }
-    if n == 1 {
-        let mut sum = 0;
-        for &w in word {
-            if w == 0 {
-                sum += 1;
-            }
-        }
-        return sum;
-    }
-    if n == 2 {
-        let mut sum = 0;
-        let mut c1 = 0;
-        for &w in word {
-            if w == 1 {
-                c1 += 1;
-            }
-            if w == 0 {
-                sum += c1;
-            }
-        }
-        return sum;
-    }
-    let mut sum = 0;
-    for (i, &c) in word.iter().enumerate() {
-        if c == n - 1 {
-            sum += rec_check_perm(n - 1, &word[(i + 1)..], cache_limit);
-        }
-    }
-    sum
-}
-
-// Counts occurences of the permutation (n-1, .., 0) in the given word
-fn rec_check_perm1(n: u8, word: &[u8], cache_limit: usize) -> usize {
-    if word.is_empty() {
-        return 0;
-    }
-    if n == 0 {
-        return 1;
-    }
-    if n == 1 {
-        return word.len();
-    }
-    if n == 2 {
-        let mut sum = 0;
-        let mut c1 = 0;
-        for &w in word {
-            if w == 1 {
-                c1 += 1;
-            }
-            if w == 0 {
-                sum += c1;
-            }
-        }
-        return sum;
-    }
-
-    if word.len() < cache_limit {
-        let cached = SUBPERM_TABLES.with(|st| st.borrow()[n as usize].get(word).cloned());
-        if let Some(sum) = cached {
-            return sum;
-        }
-    }
-
-    let mut sum = 0;
-    for (i, &c) in word.iter().enumerate() {
-        if c == n - 1 {
-            let w2: Word = word[(i + 1)..].iter().cloned().filter(|&x| x < n - 1).collect();
-            sum += rec_check_perm(n - 1, &w2, cache_limit);
-        }
-    }
-    if word.len() < cache_limit {
-        SUBPERM_TABLES.with(|st| st.borrow_mut()[n as usize].insert(word.into(), sum));
-    }
-    sum
-}
-
-pub fn is_dice_word_fair(word: &[u8], cache_limit: usize) -> bool {
-    let n = word.iter().max().unwrap() + 1;
-    //let n_perms = (0 .. n as usize).product();
-    let mut count = None;
-    let perms = (0..n).permutations(n as usize).collect_vec();
-    for p in perms {
-        let w2 = word.iter().map(|&x| p[x as usize]).collect_vec();
-        let c = rec_check_perm(n, &w2, cache_limit);
-        if count.is_none() {
-            count = Some(c);
-        }
-        if c != count.unwrap() {
-            return false;
-        }
-    }
-    true
-}
-
 mod test {
     #![allow(unused_imports)]
 
@@ -577,29 +435,20 @@ mod test {
     }
 
     #[test]
-    fn test_fair() {
-        let f = FDTS::new_empty(&[2, 3]);
-        let d1 = DiceTuple::from_word(&f, &[0, 1, 1, 1, 0]);
-        assert!(f.is_dice_fair(&d1));
-        let d2 = DiceTuple::from_word(&f, &[1, 1, 0, 0, 1]);
-        assert!(!f.is_dice_fair(&d2));
-    }
-
-    #[test]
     fn test_mapped() {
-        let mut f = FDTS::new_empty(&[2, 3, 2]);
-        f.insert_dice(DiceTuple::from_word(&f, &[1, 2, 0, 1, 1, 0, 2]));
+        let mut f = FDTS::new_empty(&[2, 2, 3]);
+        f.insert_dice(DiceTuple::from_word(&f, &[1, 2, 0, 2, 1, 0, 2]));
 
         let mf: MappedFDTS = MappedFDTS::new(&f, &[0, 2, 3], 4);
-        assert_eq!(mf.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]);
-        assert_eq!(mf.iterate_words_subset(&[3]).collect::<Vec<_>>(), &[Word::from_slice(&[3, 3])]);
+        assert_eq!(mf.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 3, 2, 0, 3])]);
+        assert_eq!(mf.iterate_words_subset(&[3]).collect::<Vec<_>>(), &[Word::from_slice(&[3, 3, 3])]);
         assert_eq!(mf.iterate_words_subset(&[1]).collect::<Vec<_>>(), &[Word::from_slice(&[])]);
         assert_eq!(
             mf.iterate_words_subset(&[0, 1, 2]).collect::<Vec<_>>(),
-            &[Word::from_slice(&[2, 0, 2, 2, 0])]
+            &[Word::from_slice(&[2, 0, 2, 0])]
         );
 
         let mf2 = f.mapped_as(&[0, -1, 1, 2]);
-        assert_eq!(mf2.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]);
+        assert_eq!(mf2.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 3, 2, 0, 3])]);
     }
 }

@@ -2,6 +2,7 @@
 use std::iter::Enumerate;
 
 pub mod fdts;
+mod permutations;
 
 use smallvec::SmallVec;
 type Word = SmallVec<[u8; 64]>;
