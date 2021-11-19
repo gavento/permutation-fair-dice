@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
 
-use crate::{subset_word, DiceTuple, Word};
+use crate::{is_sorted, subset_word, DiceTuple, Word};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::info;
@@ -24,6 +24,8 @@ impl<'a> MappedFDTS<'a> {
         for (i, &m) in map.iter().enumerate() {
             back[m] = Some(i);
         }
+        assert!(is_sorted(map));
+        assert!(is_sorted(&back.iter().filter_map(|&x| x).collect_vec()));
         Self {
             fdts,
             map: map.into(),
@@ -32,19 +34,15 @@ impl<'a> MappedFDTS<'a> {
     }
 
     pub fn iterate_words(&'a self) -> impl Iterator<Item = Word> + 'a {
-        self.fdts.dice.iter().map(move |d| {
-            d.word
-                .iter()
-                .map(|x| self.map[*x as usize] as u8)
-                .collect::<Word>()
-        })
+        self.fdts
+            .dice
+            .iter()
+            .map(move |d| d.word.iter().map(|x| self.map[*x as usize] as u8).collect::<Word>())
     }
 
     pub fn iterate_words_subset(&'a self, subset: &[usize]) -> impl Iterator<Item = Word> + 'a {
         // Which internal indices to keep
-        let keep: Vec<bool> = (0..self.map.len())
-            .map(|i| subset.contains(&self.map[i]))
-            .collect();
+        let keep: Vec<bool> = (0..self.map.len()).map(|i| subset.contains(&self.map[i])).collect();
         self.fdts.dice.iter().map(move |d| {
             d.word
                 .iter()
@@ -55,11 +53,7 @@ impl<'a> MappedFDTS<'a> {
     }
 
     pub fn subset_word_in_prefixes(&self, word: &[u8]) -> bool {
-        let bword: Word = word
-            .iter()
-            .filter_map(|&d| self.back[d as usize])
-            .map(|x| x as u8)
-            .collect();
+        let bword: Word = word.iter().filter_map(|&d| self.back[d as usize]).map(|x| x as u8).collect();
         self.fdts.prefixes.contains(&bword)
     }
 
@@ -75,6 +69,20 @@ impl<'a> MappedFDTS<'a> {
             })
             .join(",")
     }
+
+    pub fn is_compatible_with(&self, other: &MappedFDTS) -> bool {
+        if self.back.len() != other.back.len() {
+            return false;
+        }
+        for (&b1, &b2) in self.back.iter().zip(other.back.iter()) {
+            if b1.is_some() && b2.is_some() {
+                if self.fdts.sizes[b1.unwrap()] != other.fdts.sizes[b2.unwrap()] {
+                    return false;
+                }
+            }
+        }
+        true
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -88,6 +96,7 @@ pub struct FDTS {
 
 impl FDTS {
     pub fn new_empty(sizes: &[usize]) -> Self {
+        assert!(is_sorted(sizes));
         Self {
             total: sizes.iter().sum(),
             sizes: sizes.into(),
@@ -109,12 +118,12 @@ impl FDTS {
         f
     }
 
-    pub fn new_combined(
-        d1: MappedFDTS<'_>,
-        d2: MappedFDTS<'_>,
-        checking: &[MappedFDTS<'_>],
-    ) -> Self {
-        assert_eq!(d1.back.len(), d2.back.len());
+    pub fn new_combined(d1: MappedFDTS<'_>, d2: MappedFDTS<'_>, checking: &[MappedFDTS<'_>]) -> Self {
+        assert!(d1.is_compatible_with(&d2));
+        for c in checking {
+            assert!(d1.is_compatible_with(c));
+        }
+
         let sizes: Vec<usize> = (0..d1.back.len())
             .map(|i| {
                 if let Some(i1) = d1.back[i] {
@@ -127,12 +136,7 @@ impl FDTS {
 
         let mut f = FDTS::new_empty(&sizes);
 
-        let bin_indices: Vec<_> = d1
-            .map
-            .iter()
-            .cloned()
-            .filter(|i| d2.map.contains(i))
-            .collect();
+        let bin_indices: Vec<_> = d1.map.iter().cloned().filter(|i| d2.map.contains(i)).collect();
         info!(
             "Combining ({}) and ({}) into ({}), checking {:?}",
             d1.sizes_string(),
@@ -143,28 +147,16 @@ impl FDTS {
 
         let mut bins1 = HashMap::<Word, Vec<Word>>::new();
         for w in d1.iterate_words() {
-            bins1
-                .entry(subset_word(&w, &bin_indices))
-                .or_default()
-                .push(w);
+            bins1.entry(subset_word(&w, &bin_indices)).or_default().push(w);
         }
 
         let mut bins2 = HashMap::<Word, Vec<Word>>::new();
         for w in d2.iterate_words() {
-            bins2
-                .entry(subset_word(&w, &bin_indices))
-                .or_default()
-                .push(w);
+            bins2.entry(subset_word(&w, &bin_indices)).or_default().push(w);
         }
 
-        let common_keys = bins1
-            .keys()
-            .filter(|&bw| bins2.contains_key(bw))
-            .collect_vec();
-        let total_pairs: usize = common_keys
-            .iter()
-            .map(|&bw| bins1[bw].len() * bins2[bw].len())
-            .sum();
+        let common_keys = bins1.keys().filter(|&bw| bins2.contains_key(bw)).collect_vec();
+        let total_pairs: usize = common_keys.iter().map(|&bw| bins1[bw].len() * bins2[bw].len()).sum();
 
         let mut key_w1_pairs = vec![];
         for c in &common_keys {
@@ -173,13 +165,18 @@ impl FDTS {
             }
         }
 
-        info!(" .. combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs", d1.fdts.dice.len(), d2.fdts.dice.len(), &bin_indices, common_keys.len(), total_pairs);
+        info!(
+            " .. combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs",
+            d1.fdts.dice.len(),
+            d2.fdts.dice.len(),
+            &bin_indices,
+            common_keys.len(),
+            total_pairs
+        );
         let bar = ProgressBar::new(total_pairs as u64);
         bar.set_style(
             ProgressStyle::default_bar()
-                .template(
-                    "combining: {percent}%|{wide_bar}| {pos}/{len} pairs [{elapsed}<{eta}] {msg}",
-                )
+                .template("combining: {percent}%|{wide_bar}| {pos}/{len} pairs [{elapsed}<{eta}] {msg}")
                 .progress_chars("##-"),
         );
         let candidates = Mutex::new(0usize);
@@ -190,15 +187,13 @@ impl FDTS {
             for w2 in &bins2[bw] {
                 let mut local_c = 0;
                 let mut local_res = Vec::new();
-                for wi in f.interleave_words(w1, w2, &checking, &bin_indices) {
+                for wi in f.interleave_words(w1, w2, &checking, &bin_indices, true) {
                     let dice = DiceTuple::from_word(&f, &wi);
                     local_c += 1;
+                    debug_assert_eq!(f.is_dice_fair(&dice), is_dice_word_fair(&wi, 14));
                     if is_dice_word_fair(&wi, 14) {
                         local_res.push(dice);
                     }
-//                    if f.is_dice_fair(&dice) {
-//                        local_res.push(dice);
-//                    }
                 }
                 let mut c = candidates.lock().unwrap();
                 let mut r = res.lock().unwrap();
@@ -233,12 +228,7 @@ impl FDTS {
     pub fn mapped_as<'a>(&'a self, positions: &[isize]) -> MappedFDTS<'a> {
         let map: Vec<_> = (0..self.n())
             .into_iter()
-            .map(|x| {
-                positions
-                    .iter()
-                    .position(|&i| i == x as isize)
-                    .expect("invalid position map")
-            })
+            .map(|x| positions.iter().position(|&i| i == x as isize).expect("invalid position map"))
             .collect();
         MappedFDTS::new(self, &map, positions.len())
     }
@@ -301,16 +291,115 @@ impl FDTS {
         out.pop();
     }
 
+    fn _push_rec_lex(
+        &self,
+        out: &mut Word,
+        c: u8,
+        w1x: &[u8],
+        w2x: &[u8],
+        checking: &[MappedFDTS],
+        c_d: &[usize],
+        res: &mut Vec<Word>,
+        cg: &[bool],
+        icg: &[usize],
+    ) {
+        if !cg[c as usize] {
+            return;
+        }
+        out.push(c);
+        let im = icg[c as usize];
+        if !cg[im] {
+            let mut cg2: Vec<bool> = cg.into();
+            cg2[im] = true;
+            self._rec_interleave_words_lex(out, w1x, w2x, checking, c_d, res, &cg2, icg);
+        } else {
+            self._rec_interleave_words_lex(out, w1x, w2x, checking, c_d, res, cg, icg);
+        }
+        out.pop();
+    }
+
+    fn _rec_interleave_words_lex(
+        &self,
+        out: &mut Word,
+        w1: &[u8],
+        w2: &[u8],
+        checking: &[MappedFDTS],
+        common_dice: &[usize],
+        res: &mut Vec<Word>,
+        can_go: &[bool],
+        implies_can_go: &[usize],
+    ) {
+        for c in checking {
+            if !c.subset_word_in_prefixes(out) {
+                return;
+            }
+        }
+        if w1.is_empty() && w2.is_empty() {
+            res.push(out.clone());
+            return;
+        }
+        if w1.is_empty() {
+            out.extend_from_slice(w2);
+            self._rec_interleave_words(out, &[], &[], checking, common_dice, res);
+            out.truncate(out.len() - w2.len());
+            return;
+        }
+        if w2.is_empty() {
+            out.extend_from_slice(w1);
+            self._rec_interleave_words(out, &[], &[], checking, common_dice, res);
+            out.truncate(out.len() - w1.len());
+            return;
+        }
+        if can_go.iter().all(|&x| x) {
+            return self._rec_interleave_words(out, w1, w2, checking, common_dice, res);
+        }
+
+        if w1[0] == w2[0] {
+            debug_assert!(common_dice.contains(&(w1[0] as usize)));
+            self._push_rec_lex(out, w1[0], &w1[1..], &w2[1..], checking, common_dice, res, can_go, implies_can_go);
+            return;
+        }
+        if common_dice.contains(&(w1[0] as usize)) {
+            debug_assert!(!common_dice.contains(&(w2[0] as usize)));
+            self._push_rec_lex(out, w2[0], &w1, &w2[1..], checking, common_dice, res, can_go, implies_can_go);
+            return;
+        }
+        if common_dice.contains(&(w2[0] as usize)) {
+            debug_assert!(!common_dice.contains(&(w1[0] as usize)));
+            self._push_rec_lex(out, w1[0], &w1[1..], &w2, checking, common_dice, res, can_go, implies_can_go);
+            return;
+        }
+        self._push_rec_lex(out, w1[0], &w1[1..], &w2, checking, common_dice, res, can_go, implies_can_go);
+        self._push_rec_lex(out, w2[0], &w1, &w2[1..], checking, common_dice, res, can_go, implies_can_go);
+    }
+
     fn interleave_words(
         &self,
         w1: &Word,
         w2: &Word,
         checking: &[MappedFDTS],
         common_dice: &[usize],
+        same_lexicographic: bool,
     ) -> Vec<Word> {
         let mut res = Vec::new();
         let mut buf = Word::new();
-        self._rec_interleave_words(&mut buf, w1, w2, checking, common_dice, &mut res);
+        if same_lexicographic {
+            let mut size_groups = HashMap::new();
+            let mut can_go = vec![false; self.n()];
+            let mut implies_can_go = (0..self.n()).collect_vec();
+            for (i, &s) in self.sizes.iter().enumerate() {
+                size_groups.entry(s).or_insert(vec![]).push(i);
+            }
+            for (_, is) in size_groups {
+                can_go[is[0]] = true;
+                for wi in is.as_slice().windows(2) {
+                    implies_can_go[wi[0]] = wi[1];
+                }
+            }
+            self._rec_interleave_words_lex(&mut buf, w1, w2, checking, common_dice, &mut res, &can_go, &implies_can_go);
+        } else {
+            self._rec_interleave_words(&mut buf, w1, w2, checking, common_dice, &mut res);
+        }
         res
     }
 
@@ -331,13 +420,7 @@ impl FDTS {
 }
 
 impl FDTS {
-    fn _rec_is_dice_fair(
-        &self,
-        d: &DiceTuple,
-        drawn: &mut Word,
-        dice_no: usize,
-        counters: &mut HashMap<Vec<bool>, usize>,
-    ) {
+    fn _rec_is_dice_fair(&self, d: &DiceTuple, drawn: &mut Word, dice_no: usize, counters: &mut HashMap<Vec<bool>, usize>) {
         if dice_no == self.n() {
             let mut key = Vec::new();
             for i1 in 0..self.n() - 1 {
@@ -408,14 +491,15 @@ pub fn is_dice_word_fair(word: &[u8], cache_limit: usize) -> bool {
     for p in perms {
         let w2 = word.iter().map(|&x| p[x as usize]).collect_vec();
         let c = rec_check_perm(n, &w2, cache_limit);
-        if count.is_none() {count = Some(c);}
+        if count.is_none() {
+            count = Some(c);
+        }
         if c != count.unwrap() {
             return false;
         }
     }
     true
 }
-
 
 mod test {
     #![allow(unused_imports)]
@@ -449,27 +533,15 @@ mod test {
         f.insert_dice(DiceTuple::from_word(&f, &[1, 2, 0, 1, 1, 0, 2]));
 
         let mf: MappedFDTS = MappedFDTS::new(&f, &[0, 2, 3], 4);
-        assert_eq!(
-            mf.iterate_words().collect::<Vec<_>>(),
-            &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]
-        );
-        assert_eq!(
-            mf.iterate_words_subset(&[3]).collect::<Vec<_>>(),
-            &[Word::from_slice(&[3, 3])]
-        );
-        assert_eq!(
-            mf.iterate_words_subset(&[1]).collect::<Vec<_>>(),
-            &[Word::from_slice(&[])]
-        );
+        assert_eq!(mf.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]);
+        assert_eq!(mf.iterate_words_subset(&[3]).collect::<Vec<_>>(), &[Word::from_slice(&[3, 3])]);
+        assert_eq!(mf.iterate_words_subset(&[1]).collect::<Vec<_>>(), &[Word::from_slice(&[])]);
         assert_eq!(
             mf.iterate_words_subset(&[0, 1, 2]).collect::<Vec<_>>(),
             &[Word::from_slice(&[2, 0, 2, 2, 0])]
         );
 
         let mf2 = f.mapped_as(&[0, -1, 1, 2]);
-        assert_eq!(
-            mf2.iterate_words().collect::<Vec<_>>(),
-            &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]
-        );
+        assert_eq!(mf2.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 2, 2, 0, 3])]);
     }
 }

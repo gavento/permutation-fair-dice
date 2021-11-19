@@ -11,6 +11,12 @@ pub fn subset_word(w : &Word, subset: &[usize]) -> Word {
     w.iter().cloned().filter(|&x|{subset.contains(&(x as usize))}).collect()
 }
 
+pub fn is_sorted<T>(data: &[T]) -> bool
+where
+    T: Ord,
+{
+    data.windows(2).all(|w| w[0] <= w[1])
+}
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct DiceTuple {
