@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -9,6 +9,8 @@ use itertools::Itertools;
 use log::info;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
+
+const CACHE_LIMIT: usize = 12;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MappedFDTS<'a> {
@@ -108,7 +110,7 @@ impl FDTS {
                 })
                 .collect(),
             dice: vec![],
-            prefixes: HashSet::new(),
+            prefixes: HashSet::default(),
         }
     }
 
@@ -145,12 +147,12 @@ impl FDTS {
             checking.iter().map(|c| { c.sizes_string() }).collect_vec()
         );
 
-        let mut bins1 = HashMap::<Word, Vec<Word>>::new();
+        let mut bins1 = HashMap::<Word, Vec<Word>>::default();
         for w in d1.iterate_words() {
             bins1.entry(subset_word(&w, &bin_indices)).or_default().push(w);
         }
 
-        let mut bins2 = HashMap::<Word, Vec<Word>>::new();
+        let mut bins2 = HashMap::<Word, Vec<Word>>::default();
         for w in d2.iterate_words() {
             bins2.entry(subset_word(&w, &bin_indices)).or_default().push(w);
         }
@@ -190,8 +192,8 @@ impl FDTS {
                 for wi in f.interleave_words(w1, w2, &checking, &bin_indices, true) {
                     let dice = DiceTuple::from_word(&f, &wi);
                     local_c += 1;
-                    debug_assert_eq!(f.is_dice_fair(&dice), is_dice_word_fair(&wi, 14));
-                    if is_dice_word_fair(&wi, 14) {
+                    debug_assert_eq!(f.is_dice_fair(&dice), is_dice_word_fair(&wi, CACHE_LIMIT));
+                    if is_dice_word_fair(&wi, CACHE_LIMIT) {
                         local_res.push(dice);
                     }
                 }
@@ -384,7 +386,7 @@ impl FDTS {
         let mut res = Vec::new();
         let mut buf = Word::new();
         if same_lexicographic {
-            let mut size_groups = HashMap::new();
+            let mut size_groups = HashMap::default();
             let mut can_go = vec![false; self.n()];
             let mut implies_can_go = (0..self.n()).collect_vec();
             for (i, &s) in self.sizes.iter().enumerate() {
@@ -441,7 +443,7 @@ impl FDTS {
 
     pub fn is_dice_fair(&self, d: &DiceTuple) -> bool {
         let perms = (1..=self.n()).product();
-        let mut counters = HashMap::new();
+        let mut counters = HashMap::default();
         self._rec_is_dice_fair(d, &mut Word::new(), 0, &mut counters);
         let vals: Vec<usize> = counters.into_values().collect();
         if vals.len() != perms {
@@ -452,7 +454,7 @@ impl FDTS {
 }
 
 thread_local! {
-    static SUBPERM_TABLES: RefCell<Vec<HashMap<Word, usize>>> = RefCell::new(vec![HashMap::new(); 16]);
+    static SUBPERM_TABLES: RefCell<Vec<HashMap<Word, usize>>> = RefCell::new(vec![HashMap::default(); 16]);
 }
 
 // Counts occurences of the permutation (n-1, .., 0) in the given word
@@ -462,6 +464,61 @@ fn rec_check_perm(n: u8, word: &[u8], cache_limit: usize) -> usize {
     }
     if word.is_empty() {
         return 0;
+    }
+    if n == 1 {
+        let mut sum = 0;
+        for &w in word {
+            if w == 0 {
+                sum += 1;
+            }
+        }
+        return sum;
+    }
+    if n == 2 {
+        let mut sum = 0;
+        let mut c1 = 0;
+        for &w in word {
+            if w == 1 {
+                c1 += 1;
+            }
+            if w == 0 {
+                sum += c1;
+            }
+        }
+        return sum;
+    }
+    let mut sum = 0;
+    for (i, &c) in word.iter().enumerate() {
+        if c == n - 1 {
+            sum += rec_check_perm(n - 1, &word[(i + 1)..], cache_limit);
+        }
+    }
+    sum
+}
+
+// Counts occurences of the permutation (n-1, .., 0) in the given word
+fn rec_check_perm1(n: u8, word: &[u8], cache_limit: usize) -> usize {
+    if word.is_empty() {
+        return 0;
+    }
+    if n == 0 {
+        return 1;
+    }
+    if n == 1 {
+        return word.len();
+    }
+    if n == 2 {
+        let mut sum = 0;
+        let mut c1 = 0;
+        for &w in word {
+            if w == 1 {
+                c1 += 1;
+            }
+            if w == 0 {
+                sum += c1;
+            }
+        }
+        return sum;
     }
 
     if word.len() < cache_limit {
@@ -474,7 +531,8 @@ fn rec_check_perm(n: u8, word: &[u8], cache_limit: usize) -> usize {
     let mut sum = 0;
     for (i, &c) in word.iter().enumerate() {
         if c == n - 1 {
-            sum += rec_check_perm(n - 1, &word[(i + 1)..], cache_limit);
+            let w2: Word = word[(i + 1)..].iter().cloned().filter(|&x| x < n - 1).collect();
+            sum += rec_check_perm(n - 1, &w2, cache_limit);
         }
     }
     if word.len() < cache_limit {

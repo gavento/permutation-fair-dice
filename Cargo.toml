@@ -18,3 +18,4 @@ log = "^0.4"
 rayon = "^1.5"
 smallvec = {version = "^1.7", features = ["union", "const_generics"]}
 indicatif = {version = "*", features = ["rayon"]}
+rustc-hash = "*"
