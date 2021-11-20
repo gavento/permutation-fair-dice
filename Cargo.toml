@@ -13,9 +13,9 @@ path = "src/main.rs"
 
 [dependencies]
 env_logger = "^0.9"
+indicatif = {version = "*", features = ["rayon"]}
 itertools = "^0.10"
 log = "^0.4"
 rayon = "^1.5"
-smallvec = {version = "^1.7", features = ["union", "const_generics"]}
-indicatif = {version = "*", features = ["rayon"]}
 rustc-hash = "*"
+smallvec = {version = "^1.7", features = ["union", "const_generics"]}

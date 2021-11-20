@@ -1,4 +1,4 @@
-use crate::{FDTS, Word};
+use crate::{Word, FDTS};
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct DiceTuple {

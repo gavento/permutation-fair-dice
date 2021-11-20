@@ -1,5 +1,3 @@
-use std::{borrow::Borrow, ops::Deref};
-
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 
@@ -70,7 +68,10 @@ mod test {
         assert_eq!(is_word_permutation_fair(&[1, 1, 1, 0], &[0, 1]), false);
         assert_eq!(is_word_permutation_fair(&[0, 1, 2, 2, 1, 0], &[0, 1, 2]), false);
         assert_eq!(is_word_permutation_fair(&[3, 1, 3, 2, 2, 2, 1, 3, 3, 3, 3, 1, 2], &[1, 2, 3]), true);
-        assert_eq!(is_word_permutation_fair(&[1, 3, 3, 2, 2, 2, 1, 3, 3, 3, 3, 1, 2], &[1, 2, 3]), false);
+        assert_eq!(
+            is_word_permutation_fair(&[1, 3, 3, 2, 2, 2, 1, 3, 3, 3, 3, 1, 2], &[1, 2, 3]),
+            false
+        );
     }
 
     #[test]

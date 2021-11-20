@@ -1,9 +1,11 @@
 mod dice_tuple;
 mod fdts;
+mod mapped_fdts;
 mod permutations;
 
 pub use dice_tuple::DiceTuple;
 pub use fdts::FDTS;
+pub use mapped_fdts::MappedFDTS;
 pub use permutations::{count_permutation_occurences, is_word_permutation_fair};
 
 type Word = smallvec::SmallVec<[u8; 64]>;
