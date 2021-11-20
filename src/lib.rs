@@ -2,11 +2,12 @@ mod dice_tuple;
 mod fdts;
 mod mapped_fdts;
 mod permutations;
+mod fdts_combine;
 
 pub use dice_tuple::DiceTuple;
 pub use fdts::FDTS;
 pub use mapped_fdts::MappedFDTS;
-pub use permutations::{count_permutation_occurences, is_word_permutation_fair};
+pub use permutations::{count_permutation_occurences, is_word_permutation_fair, is_word_permutation_fair_up_to};
 
 type Word = smallvec::SmallVec<[u8; 64]>;
 // Consider: type Word = Vec<u8>;

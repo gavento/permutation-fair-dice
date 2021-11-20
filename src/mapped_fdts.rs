@@ -1,4 +1,4 @@
-use crate::{FDTS, Word, is_sorted};
+use crate::{is_sorted, Word, FDTS};
 use itertools::Itertools;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -49,16 +49,19 @@ impl<'a> MappedFDTS<'a> {
     }
 
     pub fn sizes_string(&self) -> String {
-        self.back
-            .iter()
-            .map(|b| {
-                if let Some(i) = *b {
-                    self.fdts.sizes[i].to_string()
-                } else {
-                    "_".into()
-                }
-            })
-            .join(",")
+        format!(
+            "[{}]",
+            self.back
+                .iter()
+                .map(|b| {
+                    if let Some(i) = *b {
+                        self.fdts.sizes[i].to_string()
+                    } else {
+                        "_".into()
+                    }
+                })
+                .join(",")
+        )
     }
 
     pub fn is_compatible_with(&self, other: &MappedFDTS) -> bool {
@@ -78,13 +81,13 @@ impl<'a> MappedFDTS<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::{MappedFDTS, FDTS};
     use crate::{DiceTuple, Word};
+    use crate::{MappedFDTS, FDTS};
 
     #[test]
     fn test_mapped() {
         let mut f = FDTS::new_empty(&[2, 2, 3]);
-        f.insert_dice(DiceTuple::from_word(&f, &[1, 2, 0, 2, 1, 0, 2]));
+        f.insert_dice_tuple(DiceTuple::from_word(&f, &[1, 2, 0, 2, 1, 0, 2]));
 
         let mf: MappedFDTS = MappedFDTS::new(&f, &[0, 2, 3], 4);
         assert_eq!(mf.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 3, 2, 0, 3])]);

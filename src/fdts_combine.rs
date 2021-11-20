@@ -7,7 +7,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use log::{debug, info};
 
-use crate::{DiceTuple, FDTS, MappedFDTS, Word, is_word_permutation_fair_up_to, subset_word};
+use crate::{is_word_permutation_fair_up_to, subset_word, DiceTuple, MappedFDTS, Word, FDTS};
 
 impl FDTS {
     pub fn new_combined(d1: MappedFDTS<'_>, d2: MappedFDTS<'_>, checking: &[MappedFDTS<'_>], fair_up_to: usize) -> Self {
@@ -43,6 +43,11 @@ impl FDTS {
             f.sizes_string(),
             checking.iter().map(|c| { c.sizes_string() }).collect_vec()
         );
+
+        if d1.fdts.dice.is_empty() || d2.fdts.dice.is_empty() || checking.iter().any(|c| c.fdts.dice.is_empty()) {
+            debug!(" .. some of the inputs are empty, returning empty FDTS {}.", f.sizes_string());
+            return f;
+        }
 
         let mut bins1 = HashMap::<Word, Vec<Word>>::default();
         for w in d1.iterate_words() {

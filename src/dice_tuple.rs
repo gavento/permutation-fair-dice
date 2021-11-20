@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use crate::{Word, FDTS};
 
 #[derive(Clone, Eq, PartialEq)]
@@ -38,6 +40,22 @@ impl DiceTuple {
             word: word.into(),
             numbers,
         }
+    }
+
+    pub fn from_string(f: &FDTS, word: &str) -> Self {
+        let word = word
+            .chars()
+            .map(|c| {
+                let c = c as usize;
+                assert!(c >= 65 && c < 65 + 26, "invalid word character (only A-Z allowed)");
+                (c - 65) as u8
+            })
+            .collect_vec();
+        assert!(word.iter().all(|&d| (d as usize) < f.n()), "some dice character above 'A' + (number of dice - 1)");
+        for (i, &s) in f.sizes.iter().enumerate() {
+            assert_eq!(word.iter().filter(|&x| *x == i as u8).count(), s);
+        }
+        Self::from_word(f, &word)
     }
 }
 

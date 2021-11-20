@@ -31,19 +31,21 @@ where
     *counts.last().unwrap()
 }
 
-/// Check if all permutations of `values` (unique numbers) are present in `word` equally often.
-/// Note: `values` does not need to be 0..n, any set is supported.
+/// Check if all permutations of `values` are present in `word` equally often.
+/// Only permutations of up to `fair_up_to`-tuples are considered
+/// Note: `values` does not need to be 0..n or sorted, any set of unique values is supported.
 /// Complexity: factorial(len(values)) * (len(values) + max(values))
-pub fn is_word_permutation_fair<A, B>(word: A, values: B) -> bool
+pub fn is_word_permutation_fair_up_to<A, B>(word: A, values: B, fair_up_to: usize) -> bool
 where
     A: AsRef<[u8]>,
     B: AsRef<[u8]>,
 {
-    let word: &[u8] = word.as_ref();
     let values: &[u8] = values.as_ref();
+    let word: &[u8] = word.as_ref();
+    assert!(fair_up_to <= values.len());
     assert!(!values.is_empty());
     let mut count = None;
-    for p in values.iter().cloned().permutations(values.len()) {
+    for p in values.iter().cloned().permutations(fair_up_to) {
         let c = count_permutation_occurences(&p, word);
         match count {
             None => count = Some(c),
@@ -56,9 +58,20 @@ where
     true
 }
 
+/// Same as is_word_permutation_fair_up_to, checking all permutations
+pub fn is_word_permutation_fair<A, B>(word: A, values: B) -> bool
+where
+    A: AsRef<[u8]>,
+    B: AsRef<[u8]>,
+{  
+    let values: &[u8] = values.as_ref();
+    is_word_permutation_fair_up_to(word, values, values.len())
+}
+
+
 #[cfg(test)]
 mod test {
-    use crate::permutations::{count_permutation_occurences, is_word_permutation_fair};
+    use crate::permutations::{count_permutation_occurences, is_word_permutation_fair, is_word_permutation_fair_up_to};
 
     #[test]
     fn test_fairness() {
@@ -72,6 +85,9 @@ mod test {
             is_word_permutation_fair(&[1, 3, 3, 2, 2, 2, 1, 3, 3, 3, 3, 1, 2], &[1, 2, 3]),
             false
         );
+
+        assert_eq!(is_word_permutation_fair_up_to(&[0, 1, 2, 2, 1, 0], &[0, 1, 2], 3), false);
+        assert_eq!(is_word_permutation_fair_up_to(&[0, 1, 2, 2, 1, 0], &[0, 1, 2], 2), true);
     }
 
     #[test]
