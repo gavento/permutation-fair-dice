@@ -451,4 +451,14 @@ mod test {
         let mf2 = f.mapped_as(&[0, -1, 1, 2]);
         assert_eq!(mf2.iterate_words().collect::<Vec<_>>(), &[Word::from_slice(&[2, 3, 0, 3, 2, 0, 3])]);
     }
+
+    #[test]
+    fn test_d6_d6() {
+        let d6 = FDTS::new_single(6);
+        assert_eq!(d6.dice.len(), 1);
+        assert_eq!(d6.prefixes.len(), 7);
+        let d6_d6 = FDTS::new_combined(d6.mapped_as(&[0, -1]), d6.mapped_as(&[-1, 0]), &[]);
+        assert_eq!(d6_d6.dice.len(), 29);
+        assert_eq!(d6_d6.prefixes.len(), 200);
+    }
 }

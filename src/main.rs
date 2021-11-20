@@ -1,4 +1,4 @@
-use fairdice::fdts::FDTS;
+use fairdice::FDTS;
 use itertools::Itertools;
 use log::info;
 
@@ -37,7 +37,6 @@ fn main() {
         d6_12_12.mapped_as(&[0, 1, -1, 2]),
         &[d6_12_12.mapped_as(&[0, -1, 1, 2])],
     );
-    return;
     
     let _d12_12_12 = FDTS::new_combined(
         d12_12.mapped_as(&[0, 1, -1]),

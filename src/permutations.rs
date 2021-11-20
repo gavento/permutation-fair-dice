@@ -5,7 +5,7 @@ use smallvec::{smallvec, SmallVec};
 
 /// Count the occurences of `permutation` as a subsequence of `word`.
 /// Assumes `permutation` to contain every number at most once.
-fn count_permutation_occurences<'a, A, B>(permutation: A, word: B) -> u64
+pub fn count_permutation_occurences<'a, A, B>(permutation: A, word: B) -> u64
 where
     A: AsRef<[u8]>,
     B: IntoIterator<Item = &'a u8>,
