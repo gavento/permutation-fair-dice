@@ -70,12 +70,12 @@ impl FDTS {
         }
 
         debug!(
-            " .. combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs",
+            " .. combining {} and {} dice with common positions {:?} and {} bins, interleaving total {} dice pairs, fair up to {}",
             d1.fdts.dice.len(),
             d2.fdts.dice.len(),
             &bin_indices,
             common_keys.len(),
-            total_pairs
+            total_pairs, f.fair_up_to,
         );
         let bar = ProgressBar::new(total_pairs as u64);
         bar.set_style(

@@ -44,15 +44,17 @@ where
     let word: &[u8] = word.as_ref();
     assert!(fair_up_to <= values.len());
     assert!(!values.is_empty());
-    let mut count = None;
-    for p in values.iter().cloned().permutations(fair_up_to) {
-        let c = count_permutation_occurences(&p, word);
-        match count {
-            None => count = Some(c),
-            Some(c0) if c != c0 => {
-                return false;
+    for pc in values.iter().cloned().combinations(fair_up_to) {
+        let mut count = None;
+        for p in pc.iter().cloned().permutations(fair_up_to) {
+            let c = count_permutation_occurences(&p, word);
+            match count {
+                None => count = Some(c),
+                Some(c0) if c != c0 => {
+                    return false;
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
     true
@@ -63,11 +65,10 @@ pub fn is_word_permutation_fair<A, B>(word: A, values: B) -> bool
 where
     A: AsRef<[u8]>,
     B: AsRef<[u8]>,
-{  
+{
     let values: &[u8] = values.as_ref();
     is_word_permutation_fair_up_to(word, values, values.len())
 }
-
 
 #[cfg(test)]
 mod test {
