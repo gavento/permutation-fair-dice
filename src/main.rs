@@ -81,7 +81,7 @@ fn load_or_compute(sizes: &[usize], up_to: usize, dir: &PathBuf) -> Result<FDTS,
 }
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "basic")]
+#[structopt(name = "permutation-fair-dice")]
 struct Opt {
     /// Limit permutation fairness to all k-tuples (default: all)
     #[structopt(short, long, default_value = "-1")]
