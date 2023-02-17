@@ -17,11 +17,12 @@ fn load_or_compute(sizes: &[usize], up_to: usize, dir: &PathBuf) -> Result<FDTS,
         assert_eq!(up_to, 1);
         return Ok(FDTS::new_single(sizes[0]));
     }
-    let pf: PathBuf = format!("fdts_{}_fair{}.json", sizes.iter().format("_"), up_to).into();
+    let pf: PathBuf = format!("fdts_{}_fair{}.json.zstd", sizes.iter().format("_"), up_to).into();
     let ps: PathBuf = [dir, &pf].iter().collect();
     if Path::new(&ps).exists() {
         let r = File::open(&ps)?;
-        let f = FDTS::from_json(&r)?;
+        let mut r = zstd::Decoder::new(r)?;
+        let f = FDTS::from_json(&mut r)?;
         assert_eq!(up_to, f.fair_up_to);
         assert_eq!(sizes, f.sizes);
         info!(
@@ -68,7 +69,8 @@ fn load_or_compute(sizes: &[usize], up_to: usize, dir: &PathBuf) -> Result<FDTS,
         checking.iter().map(|(c, p)| c.mapped_as(p)).collect_vec().as_slice(),
         up_to,
     );
-    let mut w = File::create(&ps)?;
+    let w = File::create(&ps)?;
+    let mut w = zstd::Encoder::new(w, 9)?.auto_finish();
     f.write_json(&mut w)?;
     info!(
         "# Saved FDTS [{}] (fair up to {}, {} dice tuples) to {:?}",
