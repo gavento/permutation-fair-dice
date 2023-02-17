@@ -75,7 +75,8 @@ impl FDTS {
             d2.fdts.dice.len(),
             &bin_indices,
             common_keys.len(),
-            total_pairs, f.fair_up_to,
+            total_pairs,
+            f.fair_up_to,
         );
         let bar = ProgressBar::new(total_pairs as u64);
         bar.set_style(
@@ -88,7 +89,7 @@ impl FDTS {
         let t0 = Instant::now();
 
         key_w1_pairs.par_iter().for_each(|(&bw, w1)| {
-            for w2 in &bins2[bw] {
+            let local_process = |w1, w2| {
                 let mut local_c = 0;
                 let mut local_res = Vec::new();
                 for wi in f.interleave_words(w1, w2, &checking, &bin_indices, true) {
@@ -109,9 +110,16 @@ impl FDTS {
                     *c,
                     (*c as f64) / t0.elapsed().as_secs_f64()
                 ));
+            };
+            // If key_w1_pairs is small, also iterate over bins2[bw] in parallel
+            if key_w1_pairs.len() > 64 {
+                for w2 in &bins2[bw] {
+                    local_process(w1, w2);
+                }
+            } else {
+                bins2[bw].par_iter().for_each(|w2| local_process(w1, w2));
             }
         });
-
         bar.finish();
         for rd in res.into_inner().unwrap() {
             f.insert_dice_tuple(rd);
