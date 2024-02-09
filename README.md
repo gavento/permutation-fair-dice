@@ -1,28 +1,38 @@
 # Permutation fair dice
 
-An implementation of an algorithm to find all _permutation fair dice_ given the dice sizes, by Tomáš Gavenčiak and Václav Rozhoň.
+An implementation of an algorithm to find all _permutation-fair dice_ given the dice sizes, by Tomáš Gavenčiak and Václav Rozhoň.
 
-_Definition._ Consider sets of dice where all the sides have different number, even across the dice. Then every throw
-determines a permutation of the dice if we order them according to the number shown.
-Those dice are _permutation fair_ if every permutation of the dice has the same chance of occuring after a throw.
+---
 
-_Note._ The dice are encoded as a sequence of letters, i-th letter indicates which dice contains number i.
-E.g. `ABCCBABACCABCBAABC` encodes dice A with sides 1, 6, 8, 11, 15, 16, dice B with sides 2, 5, 7, 12, 14, 17, and dice C with sides 3, 4, 9, 10, 13, 18.
+Picture a group of friends engaging in a game where they should play in a random order. They may
+each just roll a die and line up according to the numbers rolled, though this may require re-rolls on ties. A
+natural question arises: Is it possible to design a set of dice with unique numbers on each side, ensuring
+that there are no ties and yet the permutation in which the n friends line up is uniformly random? Such
+a set of dice is referred to as permutation-fair dice.
+
+In our algorithm, the dice are encoded as a sequence of letters, where _i_-th letter indicates which dice contains number _i_.
+E.g. `ABCCBABACCABCBAABC` encodes dice A with faces 1, 6, 8, 11, 15, 16, dice B with faces 2, 5, 7, 12, 14, 17, and dice C with faces 3, 4, 9, 10, 13, 18.
+This particular (6, 6, 6)-faced set of dice is also permutation-fair.
 
 ## Running the Rust version
 
-Install the Rust compiler, then check out this repository, compile in release mode for speed, and run with desired dice sizes.
+Install the [Rust compiler toolchain](https://rustup.rs/), then check out this repository, compile in release mode, and run with desired dice sizes.
 
 ```
 git clone https://github.com/gavento/permutation-fair-dice
 cd permutation-fair-dice
+
 # Build with rust cargo
 cargo build --release
+
 # Run with desired dice sizes
 ./target/release/main 6 6 6
+
+# Note you can also look for dice fair only w.r.t the distribution of the first k players (rather than all players)
+./target/release/main 4 6 6 6 --fair-up-to 3
 ```
 
-This outputs:
+Example output:
 
 ```
 [00:00:00.000] INFO   # Gathering data for FDTS [6,6,6] (fair up to 3) ...
@@ -37,11 +47,11 @@ combining: 100%|################################################################
 [00:00:00.062] INFO   # Saved FDTS [[6,6,6]] (fair up to 3, 11 dice tuples) to "fdts_data/fdts_6_6_6_fair3.json"
 ```
 
-The last line indicates how many dice tuples exist (11 here, up to relabelling of the dice) or 0 if no such dice exist. The JSON files then contain the lists of the dice. Note that this does not take left-right symmetry into account. Note that on subsequent runs the results for already enerated dice are read from the cache.
+The last line indicates how many dice tuples exist (11 here, up to relabelling of the dice) or 0 if no such dice exist. The JSON files then contain the lists of the dice. Note that this does not take left-right symmetry into account. On subsequent runs the results for already enerated dice are read from the cache.
 
 ### Performance
 
-On my laptop (Thinkpad L390 with Intel i5), all 12 fair dice of sizes [6, 6, 12, 12] are found under 2 minutes. Note that most of the computation is usually spent on finding all the fair dice of a smaller number of dice but with unnecessarily too many sides - here 80% of the time was spent generating all 44902 fair [6, 12, 12] dice.
+On my laptop (Thinkpad L390 with Intel i5), all 12 fair dice of sizes [6, 6, 12, 12] are found under 2 minutes. Note that most of the computation is usually spent on finding all the (numerous) fair dice for a subset of dice with unnecessarily many sides - here 80% of the time was spent generating all 44902 fair [6, 12, 12] dice.
 
 ### Sketch of the algorithm
 
